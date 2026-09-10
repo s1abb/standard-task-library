@@ -1,0 +1,223 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Controlled lists (editable lookup tables, per the workbook's "Lists" sheet) ───
+
+model Status {
+  id       String  @id @default(uuid())
+  label    String  @unique
+  sortOrder Int    @default(0)
+  tasks    Task[]
+  revisions TaskRevision[]
+
+  @@map("statuses")
+}
+
+model MaintenanceType {
+  id    String @id @default(uuid())
+  label String @unique
+  tasks Task[]
+
+  @@map("maintenance_types")
+}
+
+model Tactic {
+  id    String @id @default(uuid())
+  label String @unique
+  tasks Task[]
+
+  @@map("tactics")
+}
+
+model Discipline {
+  id    String @id @default(uuid())
+  label String @unique
+  tasks Task[]
+
+  @@map("disciplines")
+}
+
+model RiskLevel {
+  id       String @id @default(uuid())
+  label    String @unique
+  sortOrder Int   @default(0)
+  tasks    Task[]
+
+  @@map("risk_levels")
+}
+
+model FrequencyUnit {
+  id    String @id @default(uuid())
+  label String @unique
+  tasks Task[]
+
+  @@map("frequency_units")
+}
+
+model EvidenceType {
+  id         String      @id @default(uuid())
+  label      String      @unique
+  operations Operation[]
+
+  @@map("evidence_types")
+}
+
+// ─── Core task entity (Task Register sheet) ───
+
+model Task {
+  id                    String   @id @default(uuid())
+  taskId                String   @unique @map("task_id") // business key, e.g. PMP-ST-001
+  currentRevision       String   @map("current_revision")
+  title                 String
+  assetClass            String?  @map("asset_class")
+  equipmentType         String?  @map("equipment_type")
+  applicableMakeModel   String?  @map("applicable_make_model")
+  failureModeAddressed  String?  @map("failure_mode_addressed") @db.Text
+  maintenanceObjective  String?  @map("maintenance_objective") @db.Text
+  frequency             Decimal? @db.Decimal(10, 2)
+  tolerance             String?
+  systemCondition       String?  @map("system_condition")
+  estimatedDurationH    Decimal? @map("estimated_duration_h") @db.Decimal(6, 2)
+  taskOwner             String?  @map("task_owner")
+  technicalApprover     String?  @map("technical_approver")
+  effectiveDate         DateTime? @map("effective_date")
+  reviewDate            DateTime? @map("review_date")
+  sapTaskList           String?  @map("sap_task_list")
+  plannerGroup          String?  @map("planner_group")
+  workCentre            String?  @map("work_centre")
+
+  statusId          String @map("status_id")
+  status            Status @relation(fields: [statusId], references: [id])
+  maintenanceTypeId String @map("maintenance_type_id")
+  maintenanceType   MaintenanceType @relation(fields: [maintenanceTypeId], references: [id])
+  tacticId          String @map("tactic_id")
+  tactic            Tactic @relation(fields: [tacticId], references: [id])
+  disciplineId      String @map("discipline_id")
+  discipline        Discipline @relation(fields: [disciplineId], references: [id])
+  riskLevelId       String @map("risk_level_id")
+  riskLevel         RiskLevel @relation(fields: [riskLevelId], references: [id])
+  frequencyUnitId   String @map("frequency_unit_id")
+  frequencyUnit     FrequencyUnit @relation(fields: [frequencyUnitId], references: [id])
+
+  operations        Operation[]
+  labourRequirements LabourRequirement[]
+  materialItems      MaterialItem[]
+  safetyControls     SafetyControl[]
+  referenceDocs      ReferenceDoc[]
+  revisions          TaskRevision[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("tasks")
+}
+
+// ─── Revision audit trail ───
+
+model TaskRevision {
+  id           String   @id @default(uuid())
+  taskId       String   @map("task_id")
+  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  revision     String
+  statusId     String   @map("status_id")
+  status       Status   @relation(fields: [statusId], references: [id])
+  changeReason String?  @map("change_reason") @db.Text
+  changedBy    String?  @map("changed_by")
+  approvedBy   String?  @map("approved_by")
+  approvedDate DateTime? @map("approved_date")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("task_revisions")
+}
+
+// ─── Operations (step sequence) ───
+
+model Operation {
+  id                  String   @id @default(uuid())
+  taskId              String   @map("task_id")
+  task                Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  operationNo         Int      @map("operation_no")
+  title               String
+  workInstruction     String   @map("work_instruction") @db.Text
+  acceptanceCriteria  String?  @map("acceptance_criteria") @db.Text
+  holdPoint           String?  @map("hold_point") @db.Text
+  evidenceDescription String?  @map("evidence_description") @db.Text
+  evidenceTypeId      String?  @map("evidence_type_id")
+  evidenceType        EvidenceType? @relation(fields: [evidenceTypeId], references: [id])
+  durationH           Decimal? @map("duration_h") @db.Decimal(6, 2)
+  workCentre          String?  @map("work_centre")
+  systemCondition     String?  @map("system_condition")
+
+  @@unique([taskId, operationNo])
+  @@map("operations")
+}
+
+// ─── Labour requirements ───
+
+model LabourRequirement {
+  id             String   @id @default(uuid())
+  taskId         String   @map("task_id")
+  task           Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  roleTrade      String   @map("role_trade")
+  competency     String?  @db.Text
+  persons        Int
+  hoursPerPerson Decimal  @map("hours_per_person") @db.Decimal(6, 2)
+  supportNotes   String?  @map("support_notes") @db.Text
+
+  @@map("labour_requirements")
+}
+
+// ─── Materials, parts & consumables ───
+
+model MaterialItem {
+  id            String   @id @default(uuid())
+  taskId        String   @map("task_id")
+  task          Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  itemType      String   @map("item_type") // Part | Consumable | Lubricant (free text; not a governed list in v1)
+  partMaterial  String   @map("part_material")
+  partNumber    String?  @map("part_number")
+  quantity      Decimal  @db.Decimal(10, 3)
+  unit          String
+  mandatory     Boolean  @default(false)
+  kittingNotes  String?  @map("kitting_notes") @db.Text
+
+  @@map("material_items")
+}
+
+// ─── Safety controls (task-level, per the workbook) ───
+
+model SafetyControl {
+  id                    String   @id @default(uuid())
+  taskId                String   @map("task_id")
+  task                  Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  hazard                String   @db.Text
+  controlRequirement    String   @map("control_requirement") @db.Text
+  permitIsolation       String?  @map("permit_isolation")
+  ppe                   String?
+  verificationHoldPoint String?  @map("verification_hold_point") @db.Text
+  environmentalControl  String?  @map("environmental_control") @db.Text
+
+  @@map("safety_controls")
+}
+
+// ─── Reference documents ───
+
+model ReferenceDoc {
+  id                String   @id @default(uuid())
+  taskId            String   @map("task_id")
+  task              Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  referenceType     String   @map("reference_type")
+  title             String   @db.Text
+  documentNumber    String?  @map("document_number")
+  revision          String?
+  sourceUrl         String?  @map("source_url")
+  mandatoryReview   Boolean  @default(true) @map("mandatory_review")
+
+  @@map("reference_docs")
+}
